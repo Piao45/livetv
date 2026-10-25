@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>直播 · Live TV</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: #0f1115; color: #e8e8e8; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  header { padding: 12px 14px 8px; }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header h1 span { color: #ff5a5a; }
+  .search-row { display: flex; gap: 8px; margin-top: 10px; }
+  #search { flex: 1; padding: 10px 12px; font-size: 15px; border-radius: 10px; border: 1px solid #2a2f3a; background: #1a1e27; color: #fff; outline: none; }
+  #search:focus { border-color: #3b82f6; }
+  #refresh { padding: 10px 14px; font-size: 14px; border-radius: 10px; border: 1px solid #2a2f3a; background: #1a1e27; color: #e8e8e8; cursor: pointer; }
+  .player-wrap { position: sticky; top: 0; z-index: 10; background: #0f1115; padding: 0 14px 10px; }
+  .video-box { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; overflow: hidden; }
+  video { width: 100%; height: 100%; display: block; background: #000; }
+  .now { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .now .ch-name { font-size: 17px; font-weight: 700; }
+  .now .src-info { font-size: 13px; color: #9aa0ad; }
+  .now button { margin-left: auto; padding: 8px 14px; font-size: 14px; border-radius: 999px; border: none; background: #2563eb; color: #fff; cursor: pointer; }
+  .now button:active { background: #1d4ed8; }
+  #status { margin-top: 8px; font-size: 13px; color: #9aa0ad; min-height: 18px; }
+  #status.err { color: #ff7b7b; }
+  #status.ok { color: #4ade80; }
+  #error-box { display: none; margin-top: 10px; padding: 12px; border-radius: 10px; background: #2a1518; border: 1px solid #5b2326; font-size: 14px; line-height: 1.6; }
+  #error-box button { margin-top: 8px; padding: 8px 16px; font-size: 14px; border-radius: 999px; border: none; background: #dc2626; color: #fff; cursor: pointer; }
+  main { padding: 0 14px 40px; }
+  details.group { margin-bottom: 8px; border: 1px solid #222834; border-radius: 12px; background: #151924; overflow: hidden; }
+  details.group summary { padding: 12px 14px; font-size: 15px; font-weight: 600; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details.group summary::-webkit-details-marker { display: none; }
+  details.group summary .count { font-size: 12px; color: #9aa0ad; font-weight: 400; }
+  .ch-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 12px 14px; }
+  .ch-btn { padding: 8px 12px; font-size: 14px; border-radius: 999px; border: 1px solid #2a2f3a; background: #1e2330; color: #e8e8e8; cursor: pointer; }
+  .ch-btn:active { background: #2a3040; }
+  .ch-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .empty { padding: 30px 10px; text-align: center; color: #9aa0ad; font-size: 14px; }
+  footer { padding: 0 14px 30px; font-size: 12px; color: #666c78; text-align: center; line-height: 1.8; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>●</span> 直播 · Live TV</h1>
+  <div class="search-row">
+    <input id="search" type="search" placeholder="搜索频道，例如 CCTV-1、湖南卫视…" autocomplete="off">
+    <button id="refresh" type="button">↻ 刷新</button>
+  </div>
+</header>
+
+<div class="player-wrap">
+  <div class="video-box">
+    <video id="video" controls playsinline preload="auto"></video>
+  </div>
+  <div class="now">
+    <span class="ch-name" id="ch-name">请选择频道</span>
+    <span class="src-info" id="src-info"></span>
+    <button id="switch-src" type="button" style="display:none">换个源</button>
+  </div>
+  <div id="status">正在加载频道列表…</div>
+  <div id="error-box">
+    <div id="error-text"></div>
+    <button id="retry-btn" type="button">重试</button>
+  </div>
+</div>
+
+<main id="list"></main>
+
+<footer>
+  频道源：Guovin/iptv-api（每日更新）· 播放地址由浏览器直接请求，视频不经过本站服务器<br>
+  仅供学习交流，请勿用于商业用途
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var M3U_URL = 'https://cdn.jsdelivr.net/gh/Guovin/iptv-api@gd/output/ipv4/result.m3u';
+  var SKIP_GROUP = '🕘️更新时间';
+
+  var video = document.getElementById('video');
+  var listEl = document.getElementById('list');
+  var statusEl = document.getElementById('status');
+  var errorBox = document.getElementById('error-box');
+  var errorText = document.getElementById('error-text');
+  var chNameEl = document.getElementById('ch-name');
+  var srcInfoEl = document.getElementById('src-info');
+  var switchBtn = document.getElementById('switch-src');
+  var searchInput = document.getElementById('search');
+
+  var groups = [];            // [{name, channels:[{name, logo, urls:[...]}]}]
+  var groupMap = {};          // group name -> group object
+  var current = null;         // {ch, group}
+  var srcIndex = 0;           // index into current channel's candidate list
+  var candidates = [];        // flattened candidate URLs for current channel
+  var hls = null;
+  var stallTimer = null;
+  var loadToken = 0;          // guards async callbacks after switching
+
+  function setStatus(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className = cls || '';
+  }
+  function showError(msg) {
+    errorText.textContent = msg;
+    errorBox.style.display = 'block';
+  }
+  function hideError() { errorBox.style.display = 'none'; }
+
+  function parseM3U(text) {
+    var lines = text.split(/\r?\n/);
+    var out = [];
+    var cur = null;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+      if (line.indexOf('#EXTINF') === 0) {
+        var gm = line.match(/group-title="([^"]*)"/);
+        var group = gm ? gm[1] : '其他';
+        var lm = line.match(/tvg-logo="([^"]*)"/);
+        var logo = lm ? lm[1] : '';
+        var name = line.slice(line.lastIndexOf(',') + 1).trim();
+        cur = { group: group, name: name, logo: logo, url: '' };
+      } else if (line.charAt(0) !== '#' && cur) {
+        cur.url = line;
+        out.push(cur);
+        cur = null;
+      }
+    }
+    return out;
+  }
+
+  function isTimestampName(name) {
+    return /^\d{4}-\d{2}-\d{2}/.test(name) || /更新时间/.test(name);
+  }
+
+  function buildGroups(entries) {
+    groups = [];
+    groupMap = {};
+    entries.forEach(function (e) {
+      if (e.group === SKIP_GROUP || isTimestampName(e.name)) return;
+      if (!e.name || !e.url) return;
+      var g = groupMap[e.group];
+      if (!g) {
+        g = { name: e.group, channels: [], map: {} };
+        groupMap[e.group] = g;
+        groups.push(g);
+      }
+      var ch = g.map[e.name];
+      if (!ch) {
+        ch = { name: e.name, logo: e.logo || '', urls: [] };
+        g.map[e.name] = ch;
+        g.channels.push(ch);
+      }
+      if (ch.urls.indexOf(e.url) === -1) ch.urls.push(e.url);
+      if (!ch.logo && e.logo) ch.logo = e.logo;
+    });
+    groups.forEach(function (g) { delete g.map; });
+    return groups;
+  }
+
+  function totalChannels() {
+    var n = 0;
+    groups.forEach(function (g) { n += g.channels.length; });
+    return n;
+  }
+
+  function renderList(filter) {
+    var q = (filter || '').trim().toLowerCase();
+    listEl.innerHTML = '';
+    var shown = 0;
+    groups.forEach(function (g, gi) {
+      var chans = g.channels.filter(function (c) {
+        return !q || c.name.toLowerCase().indexOf(q) !== -1;
+      });
+      if (!chans.length) return;
+      shown += chans.length;
+      var det = document.createElement('details');
+      det.className = 'group';
+      det.open = q ? true : gi === 0;
+      var sum = document.createElement('summary');
+      var t = document.createElement('span');
+      t.textContent = g.name;
+      var c = document.createElement('span');
+      c.className = 'count';
+      c.textContent = chans.length + ' 个频道';
+      sum.appendChild(t);
+      sum.appendChild(c);
+      det.appendChild(sum);
+      var wrap = document.createElement('div');
+      wrap.className = 'ch-list';
+      chans.forEach(function (ch) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ch-btn';
+        b.textContent = ch.name;
+        if (current && current.ch === ch) b.classList.add('active');
+        b.addEventListener('click', function () { playChannel(ch); });
+        wrap.appendChild(b);
+      });
+      det.appendChild(wrap);
+      listEl.appendChild(det);
+    });
+    if (!shown) {
+      var d = document.createElement('div');
+      d.className = 'empty';
+      d.textContent = q ? '没有找到相关频道，换个关键词试试' : '暂无频道';
+      listEl.appendChild(d);
+    }
+  }
+
+  function markActive() {
+    var btns = listEl.querySelectorAll('.ch-btn');
+    btns.forEach(function (b) {
+      b.classList.toggle('active', current && b.textContent === current.ch.name);
+    });
+  }
+
+  function destroyHls() {
+    if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+    if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+  }
+
+  function buildCandidates(ch) {
+    var list = [];
+    ch.urls.forEach(function (u) {
+      if (list.indexOf(u) === -1) list.push(u);
+      if (u.indexOf('http://') === 0) {
+        var httpsU = 'https://' + u.slice(7);
+        if (list.indexOf(httpsU) === -1) list.push(httpsU);
+      }
+    });
+    return list;
+  }
+
+  function updateSrcInfo() {
+    srcInfoEl.textContent = candidates.length > 1
+      ? ('源 ' + (srcIndex + 1) + '/' + candidates.length)
+      : '';
+    switchBtn.style.display = candidates.length > 1 ? '' : 'none';
+  }
+
+  function playChannel(ch) {
+    current = { ch: ch };
+    candidates = buildCandidates(ch);
+    srcIndex = 0;
+    chNameEl.textContent = ch.name;
+    hideError();
+    markActive();
+    loadSource();
+  }
+
+  function loadSource() {
+    var token = ++loadToken;
+    var url = candidates[srcIndex];
+    updateSrcInfo();
+    setStatus('正在播放：' + current.ch.name + '（源 ' + (srcIndex + 1) + '/' + candidates.length + '）…');
+    destroyHls();
+
+    var onFatal = function () {
+      if (token !== loadToken) return;
+      tryNext('这个源播不了');
+    };
+    var armStallTimer = function () {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(function () {
+        if (token !== loadToken) return;
+        if (video.readyState < 2) tryNext('加载超时，这个源可能不可用');
+      }, 15000);
+    };
+    var onPlaying = function () {
+      if (token !== loadToken) return;
+      if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+      setStatus('正在播放：' + current.ch.name, 'ok');
+    };
+    video.removeEventListener('playing', onPlaying);
+    video.addEventListener('playing', onPlaying);
+
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({ maxBufferLength: 30, enableWorker: true });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        var p = video.play();
+        if (p && p.catch) p.catch(function () {});
+        armStallTimer();
+      });
+      hls.on(Hls.Events.ERROR, function (event, data) {
+        if (data && data.fatal) onFatal();
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+      var p2 = video.play();
+      if (p2 && p2.catch) p2.catch(function () {});
+      armStallTimer();
+      video.onerror = function () { onFatal(); };
+    } else {
+      showError('当前浏览器不支持 HLS 播放，请用 Safari 或 Chrome 打开。');
+      setStatus('浏览器不支持 HLS', 'err');
+    }
+  }
+
+  function tryNext(reason) {
+    if (srcIndex + 1 < candidates.length) {
+      srcIndex++;
+      setStatus(reason + '，正在尝试下一个源…');
+      loadSource();
+    } else {
+      setStatus('全部 ' + candidates.length + ' 个源都播不了', 'err');
+      showError('这个频道暂时播不了：' + (reason || '所有源都失败了') + '。可以点“换个源”从第一个源重新试，或稍后再试。');
+    }
+  }
+
+  switchBtn.addEventListener('click', function () {
+    if (!current || candidates.length < 2) return;
+    srcIndex = (srcIndex + 1) % candidates.length;
+    hideError();
+    loadSource();
+  });
+  document.getElementById('retry-btn').addEventListener('click', function () {
+    hideError();
+    if (current) { srcIndex = 0; loadSource(); }
+    else loadList();
+  });
+
+  searchInput.addEventListener('input', function () {
+    renderList(searchInput.value);
+  });
+
+  document.getElementById('refresh').addEventListener('click', function () {
+    loadList(true);
+  });
+
+  function loadList(force) {
+    setStatus('正在加载频道列表…');
+    hideError();
+    var url = M3U_URL + (M3U_URL.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+    fetch(url, { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (text) {
+        var entries = parseM3U(text);
+        buildGroups(entries);
+        var n = totalChannels();
+        if (!n) throw new Error('频道列表为空');
+        renderList(searchInput.value);
+        setStatus('已加载 ' + n + ' 个频道 · ' + groups.length + ' 个分组，点击频道开始播放');
+        if (!current && groups.length && groups[0].channels.length) {
+          playChannel(groups[0].channels[0]);
+        }
+      })
+      .catch(function (err) {
+        setStatus('频道列表加载失败', 'err');
+        showError('频道列表加载失败（' + err.message + '），请检查网络后重试。');
+      });
+  }
+
+  loadList();
+})();
+</script>
+</body>
+</html>
