@@ -39,9 +39,30 @@
   .ch-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
   .empty { padding: 30px 10px; text-align: center; color: #9aa0ad; font-size: 14px; }
   footer { padding: 0 14px 30px; font-size: 12px; color: #666c78; text-align: center; line-height: 1.8; }
+  #login-overlay { position: fixed; inset: 0; z-index: 100; background: #0f1115; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #login-overlay.hidden { display: none; }
+  .login-box { width: 100%; max-width: 320px; text-align: center; }
+  .login-box h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .login-box h1 span { color: #ff5a5a; }
+  .login-box p { font-size: 13px; color: #9aa0ad; margin-bottom: 18px; }
+  .login-box input { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid #2a2f3a; background: #1a1e27; color: #fff; outline: none; text-align: center; }
+  .login-box input:focus { border-color: #3b82f6; }
+  .login-box button { width: 100%; margin-top: 12px; padding: 12px; font-size: 16px; border-radius: 10px; border: none; background: #2563eb; color: #fff; cursor: pointer; }
+  .login-box button:active { background: #1d4ed8; }
+  #login-err { margin-top: 10px; font-size: 13px; color: #ff7b7b; min-height: 18px; }
+  #logout { color: #666c78; text-decoration: underline; cursor: pointer; background: none; border: none; font-size: 12px; padding: 0; }
 </style>
 </head>
 <body>
+<div id="login-overlay">
+  <div class="login-box">
+    <h1><span>●</span> 直播 · Live TV</h1>
+    <p>请输入密码进入</p>
+    <input id="login-pw" type="password" placeholder="密码" autocomplete="current-password">
+    <button id="login-btn" type="button">进入</button>
+    <div id="login-err"></div>
+  </div>
+</div>
 <header>
   <h1><span>●</span> 直播 · Live TV</h1>
   <div class="search-row">
@@ -70,7 +91,8 @@
 
 <footer>
   频道源：Guovin/iptv-api（每日更新）· 视频经本站 https 中转播放（走 Vercel 流量，免费档每月 100 GB）<br>
-  仅供学习交流，请勿用于商业用途
+  仅供学习交流，请勿用于商业用途<br>
+  <button id="logout" type="button">退出登录</button>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
@@ -365,7 +387,68 @@
       });
   }
 
-  loadList();
+  // ---- Password gate (like MoonTV): first visit asks for a password;
+  // once correct, localStorage remembers it. Only the SHA-256 hash of
+  // the password is stored in this file, never the password itself.
+  var AUTH_HASH = 'd278dccb577bf54f53dce10680eaea985b0663d6ab6e8a952adc3bf8b1e6f394';
+  var AUTH_KEY = 'livetv_auth';
+  var overlay = document.getElementById('login-overlay');
+  var pwInput = document.getElementById('login-pw');
+  var loginErr = document.getElementById('login-err');
+
+  function sha256Hex(str) {
+    var data = new TextEncoder().encode(str);
+    return crypto.subtle.digest('SHA-256', data).then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var hex = '';
+      for (var i = 0; i < bytes.length; i++) {
+        hex += ('0' + bytes[i].toString(16)).slice(-2);
+      }
+      return hex;
+    });
+  }
+
+  function tryLogin() {
+    var pw = pwInput.value;
+    if (!pw) { loginErr.textContent = '请输入密码'; return; }
+    if (!window.crypto || !crypto.subtle) {
+      loginErr.textContent = '当前浏览器不支持安全验证，请用 Safari 或 Chrome 打开。';
+      return;
+    }
+    sha256Hex(pw).then(function (hex) {
+      if (hex === AUTH_HASH) {
+        try { localStorage.setItem(AUTH_KEY, '1'); } catch (e) {}
+        overlay.classList.add('hidden');
+        loadList();
+      } else {
+        loginErr.textContent = '密码不对，再试一次';
+        pwInput.value = '';
+        pwInput.focus();
+      }
+    }).catch(function () {
+      loginErr.textContent = '验证失败，请重试';
+    });
+  }
+
+  document.getElementById('login-btn').addEventListener('click', tryLogin);
+  pwInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') tryLogin();
+  });
+  document.getElementById('logout').addEventListener('click', function () {
+    try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
+    location.reload();
+  });
+
+  // Gate: channel list and playback only start after auth.
+  var authed = false;
+  try { authed = localStorage.getItem(AUTH_KEY) === '1'; } catch (e) {}
+  if (authed) {
+    overlay.classList.add('hidden');
+    loadList();
+  } else {
+    overlay.classList.remove('hidden');
+    pwInput.focus();
+  }
 })();
 </script>
 </body>
