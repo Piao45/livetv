@@ -90,7 +90,7 @@
 <main id="list"></main>
 
 <footer>
-  频道源：Guovin/iptv-api（每日更新）· 视频经本站 https 中转播放（走 Vercel 流量，免费档每月 100 GB）<br>
+  频道源：Guovin/iptv-api（主源，每日更新）· 备用源：iptv-1080p-4k（主源失效时自动切换）· 视频经本站 https 中转播放（走 Vercel 流量，免费档每月 100 GB）<br>
   仅供学习交流，请勿用于商业用途<br>
   <button id="logout" type="button">退出登录</button>
 </footer>
@@ -99,7 +99,11 @@
 <script>
 (function () {
   'use strict';
-  var M3U_URL = 'https://cdn.jsdelivr.net/gh/Guovin/iptv-api@gd/output/ipv4/result.m3u';
+  var M3U_SOURCES = [
+    { url: 'https://cdn.jsdelivr.net/gh/Guovin/iptv-api@gd/output/ipv4/result.m3u', label: 'Guovin' },
+    { url: 'https://cdn.jsdelivr.net/gh/admin11044/iptv-1080p-4k@main/output/index.m3u', label: '备用源' }
+  ];
+  var activeSourceLabel = '';
   var SKIP_GROUP = '🕘️更新时间';
   // All stream URLs go through the same-origin https proxy (/api/proxy):
   // free CCTV sources are plain http://, which browsers block on an
@@ -364,27 +368,37 @@
   function loadList(force) {
     setStatus('正在加载频道列表…');
     hideError();
-    var url = M3U_URL + (M3U_URL.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
-    fetch(url, { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      })
-      .then(function (text) {
-        var entries = parseM3U(text);
-        buildGroups(entries);
-        var n = totalChannels();
-        if (!n) throw new Error('频道列表为空');
-        renderList(searchInput.value);
-        setStatus('已加载 ' + n + ' 个频道 · ' + groups.length + ' 个分组，点击频道开始播放');
-        if (!current && groups.length && groups[0].channels.length) {
-          playChannel(groups[0].channels[0]);
-        }
-      })
-      .catch(function (err) {
+    var idx = 0;
+    var tryNextSource = function () {
+      if (idx >= M3U_SOURCES.length) {
         setStatus('频道列表加载失败', 'err');
-        showError('频道列表加载失败（' + err.message + '），请检查网络后重试。');
-      });
+        showError('频道列表加载失败（主源和备用源都不可用），请检查网络后重试。');
+        return;
+      }
+      var src = M3U_SOURCES[idx++];
+      var url = src.url + (src.url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+      fetch(url, { cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.text();
+        })
+        .then(function (text) {
+          var entries = parseM3U(text);
+          buildGroups(entries);
+          var n = totalChannels();
+          if (!n) throw new Error('频道列表为空');
+          activeSourceLabel = src.label;
+          renderList(searchInput.value);
+          setStatus('已加载 ' + n + ' 个频道 · ' + groups.length + ' 个分组 · 源：' + src.label + '，点击频道开始播放');
+          if (!current && groups.length && groups[0].channels.length) {
+            playChannel(groups[0].channels[0]);
+          }
+        })
+        .catch(function (err) {
+          tryNextSource();
+        });
+    };
+    tryNextSource();
   }
 
   // ---- Password gate (like MoonTV): first visit asks for a password;
