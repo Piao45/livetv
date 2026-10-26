@@ -1,0 +1,122 @@
+{
+  "sites": [
+    {
+      "key": "暴风",
+      "name": "暴风",
+      "type": 1,
+      "api": "https://bfzyapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "电影天堂资源",
+      "name": "电影天堂资源",
+      "type": 1,
+      "api": "http://caiji.dyttzyapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "非凡",
+      "name": "非凡",
+      "type": 1,
+      "api": "https://api.ffzyapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "豪华",
+      "name": "豪华",
+      "type": 1,
+      "api": "https://hhzyapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "红牛",
+      "name": "红牛",
+      "type": 1,
+      "api": "https://www.hongniuzy2.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "IK",
+      "name": "IK",
+      "type": 1,
+      "api": "https://ikunzyapi.com/api.php/provide/vod/from/ikm3u8/",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "量子资源",
+      "name": "量子资源",
+      "type": 1,
+      "api": "https://cj.lzcaiji.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "量子",
+      "name": "量子",
+      "type": 1,
+      "api": "https://cj.lziapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "茅台资源",
+      "name": "茅台资源",
+      "type": 1,
+      "api": "https://caiji.maotaizy.cc/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "魔都",
+      "name": "魔都",
+      "type": 1,
+      "api": "https://www.mdzyapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "牛牛",
+      "name": "牛牛",
+      "type": 1,
+      "api": "https://api.niuniuzy.me/api.php/provide/vod/",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "索尼",
+      "name": "索尼",
+      "type": 1,
+      "api": "https://suoniapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    },
+    {
+      "key": "最大资源",
+      "name": "最大资源",
+      "type": 1,
+      "api": "https://api.zuidapi.com/api.php/provide/vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "ext": ""
+    }
+  ]
+}
+---count: 13
