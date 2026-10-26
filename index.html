@@ -69,7 +69,7 @@
 <main id="list"></main>
 
 <footer>
-  频道源：Guovin/iptv-api（每日更新）· 播放地址由浏览器直接请求，视频不经过本站服务器<br>
+  频道源：Guovin/iptv-api（每日更新）· 视频经本站 https 中转播放（走 Vercel 流量，免费档每月 100 GB）<br>
   仅供学习交流，请勿用于商业用途
 </footer>
 
@@ -79,6 +79,11 @@
   'use strict';
   var M3U_URL = 'https://cdn.jsdelivr.net/gh/Guovin/iptv-api@gd/output/ipv4/result.m3u';
   var SKIP_GROUP = '🕘️更新时间';
+  // All stream URLs go through the same-origin https proxy (/api/proxy):
+  // free CCTV sources are plain http://, which browsers block on an
+  // https:// page (mixed content). The proxy fetches them server-side
+  // and re-serves them over https, rewriting manifests so segments stay
+  // on https too. The M3U list itself stays direct (jsDelivr is https).
 
   var video = document.getElementById('video');
   var listEl = document.getElementById('list');
@@ -223,14 +228,15 @@
     if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
   }
 
+  function proxied(u) {
+    return '/api/proxy?url=' + encodeURIComponent(u);
+  }
+
   function buildCandidates(ch) {
     var list = [];
     ch.urls.forEach(function (u) {
-      if (list.indexOf(u) === -1) list.push(u);
-      if (u.indexOf('http://') === 0) {
-        var httpsU = 'https://' + u.slice(7);
-        if (list.indexOf(httpsU) === -1) list.push(httpsU);
-      }
+      var p = proxied(u);
+      if (list.indexOf(p) === -1) list.push(p);
     });
     return list;
   }
