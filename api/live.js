@@ -3,10 +3,7 @@
 // The TV playlist (tv.m3u) has ONE entry per channel, pointing here:
 //   /api/live?ch=CCTV-1
 // On each open, this function probes that channel's upstream stream URLs
-// in parallel (short timeout) and 302-redirects to the HIGHEST-RESOLUTION
-// working one (4K/8K > 1080p > 720p). Resolution is read from the manifest
-// (master-playlist RESOLUTION=) when present, else inferred from the URL
-// (4k/1080p/720p/hd hints), defaulting to 720p.
+// in parallel (short timeout) and 302-redirects to the first working one.
 // Video data flows straight from the upstream to the player — nothing
 // streams through Vercel, so there is no bandwidth or function-duration
 // problem. If every source is dead, it answers 502 and the player can
@@ -24,20 +21,8 @@ var CHANNELS = {"CCTV-1":["http://63.141.230.178:82/gslb/zbdq5.m3u8?id=cctv1hd",
 var UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 var TIMEOUT_MS = 3000;
 
-// Probe one upstream URL: fetch the manifest head and check it is a real
-// HLS manifest. Returns {url, res} (res = vertical resolution in px, e.g.
-// 2160/1080/720) or null. Resolution comes from a master playlist's
-// RESOLUTION= attributes when present, else from URL hints (4k/8k/1080p/
-// 720p/hd), defaulting to 720.
-function scoreFromUrl(u) {
-  var s = String(u || '').toLowerCase();
-  if (/(8k|4320)/.test(s)) return 4320;
-  if (/(4k|2160|uhd)/.test(s)) return 2160;
-  if (/1080/.test(s)) return 1080;
-  if (/720/.test(s)) return 720;
-  if (/hd/.test(s)) return 1080;
-  return 720;
-}
+// Probe one upstream URL: fetch only the first chunk and check it is a
+// real HLS manifest. Returns the final URL (after redirects) or null.
 async function probe(url) {
   var ctrl = new AbortController();
   var timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, TIMEOUT_MS);
@@ -50,37 +35,18 @@ async function probe(url) {
     });
     if (!r.ok || !r.body) return null;
     var reader = r.body.getReader();
-    var buf = [];
-    var total = 0;
+    var chunk;
     try {
-      for (;;) {
-        var read = await reader.read();
-        if (read.done) break;
-        if (read.value) {
-          buf.push(read.value);
-          total += read.value.length;
-          if (total >= 16384) break;
-        }
-      }
+      var read = await reader.read();
+      chunk = read.value;
     } finally {
       try { await reader.cancel(); } catch (e) {}
     }
-    if (!total) return null;
-    var all = new Uint8Array(total);
-    var off = 0;
-    for (var i = 0; i < buf.length; i++) { all.set(buf[i], off); off += buf[i].length; }
-    var text = new TextDecoder('utf-8').decode(all);
+    if (!chunk || chunk.length === 0) return null;
+    var text = new TextDecoder('utf-8').decode(chunk.subarray(0, 4096));
     var trimmed = text.replace(/^\uFEFF/, '').trim();
-    if (trimmed.indexOf('#EXTM3U') !== 0) return null;
-    var res = 0;
-    var re = /RESOLUTION=(\d+)x(\d+)/g;
-    var m;
-    while ((m = re.exec(text)) !== null) {
-      var h = parseInt(m[2], 10);
-      if (h > res) res = h;
-    }
-    if (!res) res = scoreFromUrl(r.url || url);
-    return { url: r.url || url, res: res };
+    if (trimmed.indexOf('#EXTM3U') === 0) return r.url || url;
+    return null;
   } catch (e) {
     return null;
   } finally {
@@ -115,18 +81,15 @@ module.exports = async function (req, res) {
     return;
   }
 
-  // Probe every source in parallel; among the working ones, pick the
-  // highest resolution (4K/8K > 1080p > 720p). Ties keep playlist order
-  // (Guovin first, then the backup list).
+  // Probe every source in parallel; take the first working one in the
+  // playlist order (Guovin first, then the backup list).
   var results = await Promise.all(urls.map(probe));
-  var best = null;
+  var pick = null;
   for (var i = 0; i < results.length; i++) {
-    var cand = results[i];
-    if (!cand) continue;
-    if (!best || cand.res > best.res) best = cand;
+    if (results[i]) { pick = results[i]; break; }
   }
 
-  if (!best) {
+  if (!pick) {
     res.statusCode = 502;
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.end('no working source');
@@ -134,7 +97,7 @@ module.exports = async function (req, res) {
   }
 
   res.statusCode = 302;
-  res.setHeader('Location', best.url);
+  res.setHeader('Location', pick);
   res.setHeader('Cache-Control', 'no-store');
   res.end();
 };
